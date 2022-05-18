@@ -1,0 +1,16 @@
+{
+    "bridge": {
+        "name": "Homebridge 646A",
+        "username": "0E:52:BD:57:64:6A",
+        "port": 52100,
+        "pin": "031-45-154"
+    },
+    "accessories": [],
+    "platforms": [
+        {
+            "name": "Config",
+            "port": 8581,
+            "platform": "config"
+        }
+    ]
+}

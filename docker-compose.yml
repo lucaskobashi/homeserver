@@ -1,0 +1,25 @@
+version: '3'
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    volumes:
+      - /homeAssistant/
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+  homebridge:
+    container_name: homebridge
+    image: oznu/homebridge:ubuntu
+    restart: always
+    network_mode: host
+    environment:
+      - TZ=America/Regina
+      - PGID=1000
+      - PUID=1000
+      - HOMEBRIDGE_CONFIG_UI=1
+      - HOMEBRIDGE_CONFIG_UI_PORT=8581
+    volumes:
+      - ./homebridge:/homebridge
+
