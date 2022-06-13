@@ -1,25 +1,133 @@
 version: '3'
-services:
-  homeassistant:
-    container_name: homeassistant
-    image: "ghcr.io/home-assistant/home-assistant:stable"
-    volumes:
-      - /homeAssistant/
-      - /etc/localtime:/etc/localtime:ro
-    restart: unless-stopped
-    privileged: true
-    network_mode: host
-  homebridge:
-    container_name: homebridge
-    image: oznu/homebridge:ubuntu
-    restart: always
-    network_mode: host
-    environment:
-      - TZ=America/Regina
-      - PGID=1000
-      - PUID=1000
-      - HOMEBRIDGE_CONFIG_UI=1
-      - HOMEBRIDGE_CONFIG_UI_PORT=8581
-    volumes:
-      - ./homebridge:/homebridge
 
+networks:
+  NET:
+  nginxdb:
+  nextclouddb:
+  homeserverEXT:
+    external: true
+
+services:
+
+  nextcloud:
+    container_name: nextcloud
+    image: nextcloud
+    restart: always
+    volumes:
+      - ./nextcloud/data:/var/www/html
+    env_file:
+      - ./nextcloud/nextcloud.env
+    networks:
+      - NET
+      - nextclouddb
+    depends_on:
+      - nextclouddb
+
+  nextclouddb:
+    container_name: nextclouddb
+    image: mariadb
+    restart: always
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    volumes:
+      - ./nextcloud/db:/var/lib/mysql
+    env_file:
+      - ./nextcloud/nextclouddb.env
+    networks:
+      - nextclouddb
+
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:latest
+    privileged: true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer:/data
+    restart: always
+    networks:
+      - NET
+
+  vaultwarden:
+    container_name: vaultwarden
+    image: vaultwarden/server:latest
+    restart: always
+    volumes:
+      - ./vaultwarden:/data
+    networks:
+      - NET
+
+  nginx:
+    container_name: nginx
+    image: jc21/nginx-proxy-manager:latest
+    ports:
+      - 80:80
+      - 81:81
+      - 443:443
+    volumes:
+      - ./nginx/data:/data
+      - ./nginx/letsencrypt:/etc/letsencrypt
+    restart: unless-stopped
+    env_file:
+      - ./nginx/nginx.env
+    depends_on:
+      - nginxdb
+    networks:
+      - nginxdb
+      - NET
+      - homeserverEXT
+
+  nginxdb:
+    container_name: db
+    image: jc21/mariadb-aria:latest
+    restart: always
+    volumes:
+      - ./nginxdb/db:/var/lib/mysql
+    env_file: ./nginx/nginxdb.env
+    networks:
+      - nginxdb
+  # homer:
+  #   container_name: homer
+  #   image: b4bz/homer:latest
+  #   volumes:
+  #     - ./homer/data:/www/assets
+  #   restart: always
+  #   env_file:
+  #     - ./homer/homer.env
+  #   ports:
+  #     - 8082:8080
+
+  # homeassistant:
+  #   container_name: homeassistant
+  #   image: homeassistant/home-assistant:stable
+  #   volumes:
+  #     - ./homeassistant:/config
+  #     - /etc/localtime:/etc/localtime:ro
+  #   ports:
+  #     - 8123:8123
+  #   restart: unless-stopped
+  #   privileged: true
+
+  # minecraft:
+  #   container_name: minecraft
+  #   image: itzg/minecraft-server:latest
+  #   ports:
+  #     - 25565:25565
+  #   environment:
+  #     EULA: "TRUE"
+  #   restart: unless-stopped
+  #   tty: true
+  #   volumes:
+  #     - ./minecraft:/data
+
+  # timemachine:
+  #   container_name: timemachine
+  #   image: mbentley/timemachine:smb
+  #   restart: always
+  #   network_mode: host
+  #   env_file:
+  #     - ./timemachine/timemachine.env
+  #   volumes:
+  #     - ~/timemachine:/opt/timemachine
+  #     - ./timemachine/timemachine-var-lib-samba:/var/lib/samba
+  #     - ./timemachine/timemachine-var-cache-samba:/var/cache/samba
+  #     - ./timemachine/timemachine-run-samba:/run/samba
