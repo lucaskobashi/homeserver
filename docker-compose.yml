@@ -4,17 +4,148 @@ networks:
   NET:
   nginxdb:
   nextclouddb:
+  photoprismdb:
   homeserverEXT:
     external: true
 
 services:
 
+  jdownloader:
+    image: jlesage/jdownloader-2
+    container_name: jdownloader
+    env_file:
+      - ./jdownloader/jdownloader.env
+    volumes:
+      - ./jdownloader/config:/config:rw
+      - ~/hdd0/nextcloud/data/lucas/files/Downloads:/output:rw
+    networks:
+      - NET
+
+  qbittorrent:
+    image: linuxserver/qbittorrent
+    container_name: qbittorrent
+    env_file:
+      - ./qbittorrent/qbittorrent.env
+    volumes:
+      - ./qbittorrent/config:/config
+      - ~/hdd0/nextcloud/data/lucas/files:/files
+    restart: unless-stopped
+    ports:
+      - 9090:9090
+    networks:
+      - NET
+
+  radarr:
+    container_name: radarr
+    image: lscr.io/linuxserver/radarr:latest
+    env_file:
+      - ./arr/radarr/radarr.env
+    volumes:
+      - ./arr/radarr/config:/config
+      - ~/hdd0/nextcloud/data/lucas/files:/files
+    networks:
+      - NET
+    restart: unless-stopped
+
+  sonarr:
+    container_name: sonarr
+    image: lscr.io/linuxserver/sonarr:latest
+    env_file:
+      - ./arr/sonarr/sonarr.env
+    volumes:
+      - ./arr/sonarr/config:/config
+      - ~/hdd0/nextcloud/data/lucas/files/TV:/tv
+    networks:
+      - NET
+    restart: unless-stopped
+
+  prowlarr:
+    container_name: prowlarr
+    image: lscr.io/linuxserver/prowlarr:develop
+    env_file:
+      - ./arr/prowlarr/prowlarr.env
+    volumes:
+      - ./arr/prowlarr/config:/config
+    networks:
+      - NET
+    restart: unless-stopped
+
+  bazarr:
+    container_name: bazarr
+    image: lscr.io/linuxserver/bazarr:latest
+    env_file:
+      - ./arr/bazarr/bazarr.env
+    volumes:
+      - ./arr/bazarr/config:/config
+      - ~/hdd0/nextcloud/data/lucas/files/Downloads:/downloads
+    networks:
+      - NET
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    networks:
+      - NET
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - ./watchtower/watchtower.env
+
+  photoprism:
+    image: photoprism/photoprism:latest
+    container_name: photoprism
+    depends_on:
+      - photoprismdb
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    env_file:
+      - ./photoprism/photoprism.env
+    volumes:
+      - ~/hdd0/nextcloud/data/lucas/files/Photos:/photoprism/originals
+      - ./photoprism/data/import:/photoprism/import
+      - ./photoprism/data/storage:/photoprism/storage
+    networks:
+      - NET
+      - photoprismdb
+
+  photoprismdb:
+    image: mariadb:10.8
+    container_name: photoprismdb
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    command: mysqld --lower-case-table-names=1 --innodb-buffer-pool-size=512M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    volumes:
+      - ./photoprism/db:/var/lib/mysql
+    env_file:
+      - ./photoprism/photoprismdb.env
+    networks:
+      - photoprismdb
+
+  jellyfin:
+    image: jellyfin/jellyfin
+    container_name: jellyfin
+    networks:
+      - NET
+    volumes:
+      - ./jellyfin/config:/config
+      - ./jellyfin/cache:/cache
+      - ~/hdd0/nextcloud/data/lucas/files:/media
+    restart: "unless-stopped"
+    env_file:
+      - ./jellyfin/jellyfin.env
+
   nextcloud:
     container_name: nextcloud
     image: nextcloud
     restart: always
+    user: "33"
     volumes:
-      - ./nextcloud/data:/var/www/html
+      - /home/lucas/hdd0/nextcloud:/var/www/html
     env_file:
       - ./nextcloud/nextcloud.env
     networks:
@@ -26,8 +157,6 @@ services:
   nextclouddb:
     container_name: nextclouddb
     image: mariadb
-    restart: always
-    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
     volumes:
       - ./nextcloud/db:/var/lib/mysql
     env_file:
@@ -52,13 +181,17 @@ services:
     image: vaultwarden/server:latest
     restart: always
     volumes:
-      - ./vaultwarden:/data
+      - ./vaultwarden/data:/data
+    env_file:
+      - ./vaultwarden/vaultwarden.env
     networks:
       - NET
 
   nginx:
     container_name: nginx
     image: jc21/nginx-proxy-manager:latest
+    depends_on:
+      - nginxdb
     ports:
       - 80:80
       - 81:81
@@ -66,68 +199,21 @@ services:
     volumes:
       - ./nginx/data:/data
       - ./nginx/letsencrypt:/etc/letsencrypt
-    restart: unless-stopped
+    restart: always
     env_file:
       - ./nginx/nginx.env
-    depends_on:
-      - nginxdb
     networks:
       - nginxdb
       - NET
       - homeserverEXT
 
   nginxdb:
-    container_name: db
+    container_name: nginxdb
     image: jc21/mariadb-aria:latest
     restart: always
     volumes:
-      - ./nginxdb/db:/var/lib/mysql
-    env_file: ./nginx/nginxdb.env
+      - ./nginx/db:/var/lib/mysql
+    env_file:
+      - ./nginx/nginxdb.env
     networks:
       - nginxdb
-  # homer:
-  #   container_name: homer
-  #   image: b4bz/homer:latest
-  #   volumes:
-  #     - ./homer/data:/www/assets
-  #   restart: always
-  #   env_file:
-  #     - ./homer/homer.env
-  #   ports:
-  #     - 8082:8080
-
-  # homeassistant:
-  #   container_name: homeassistant
-  #   image: homeassistant/home-assistant:stable
-  #   volumes:
-  #     - ./homeassistant:/config
-  #     - /etc/localtime:/etc/localtime:ro
-  #   ports:
-  #     - 8123:8123
-  #   restart: unless-stopped
-  #   privileged: true
-
-  # minecraft:
-  #   container_name: minecraft
-  #   image: itzg/minecraft-server:latest
-  #   ports:
-  #     - 25565:25565
-  #   environment:
-  #     EULA: "TRUE"
-  #   restart: unless-stopped
-  #   tty: true
-  #   volumes:
-  #     - ./minecraft:/data
-
-  # timemachine:
-  #   container_name: timemachine
-  #   image: mbentley/timemachine:smb
-  #   restart: always
-  #   network_mode: host
-  #   env_file:
-  #     - ./timemachine/timemachine.env
-  #   volumes:
-  #     - ~/timemachine:/opt/timemachine
-  #     - ./timemachine/timemachine-var-lib-samba:/var/lib/samba
-  #     - ./timemachine/timemachine-var-cache-samba:/var/cache/samba
-  #     - ./timemachine/timemachine-run-samba:/run/samba
