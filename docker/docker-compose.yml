@@ -1,0 +1,256 @@
+version: '3'
+
+networks:
+  NET:
+  nginxdb:
+  seafile-net:
+  photoprismdb:
+  homeserverEXT:
+    external: true
+
+services:
+
+  mc:
+    image: itzg/minecraft-server
+    container_name: minecraft
+    ports:
+      - 25565:25565
+    env_file:
+      - ./minecraft/minecraft.env
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    volumes:
+      - ./minecraft/data:/data
+    networks:
+      - homeserverEXT
+
+  jdownloader:
+    image: jlesage/jdownloader-2
+    container_name: jdownloader
+    env_file:
+      - ./jdownloader/jdownloader.env
+    volumes:
+      - ./jdownloader/config:/config:rw
+      - /home/lucas/hdd0/Files/Downloads:/output:rw
+    networks:
+      - NET
+
+  qbittorrent:
+    image: linuxserver/qbittorrent
+    container_name: qbittorrent
+    env_file:
+      - ./qbittorrent/qbittorrent.env
+    volumes:
+      - ./qbittorrent/config:/config
+      - /home/lucas/hdd0/data:/data
+    restart: unless-stopped
+    ports:
+      - 8090:8090
+      - 6881:6881
+      - 6881:6881/udp
+    networks:
+      - NET
+
+  radarr:
+    container_name: radarr
+    image: lscr.io/linuxserver/radarr:latest
+    env_file:
+      - ./arr/radarr/radarr.env
+    volumes:
+      - ./arr/radarr/config:/config
+      - /home/lucas/hdd0/data:/data
+    networks:
+      - NET
+    restart: unless-stopped
+
+  sonarr:
+    container_name: sonarr
+    image: lscr.io/linuxserver/sonarr:latest
+    env_file:
+      - ./arr/sonarr/sonarr.env
+    volumes:
+      - ./arr/sonarr/config:/config
+      - /home/lucas/hdd0/data:/data
+    networks:
+      - NET
+    restart: unless-stopped
+
+  prowlarr:
+    container_name: prowlarr
+    image: lscr.io/linuxserver/prowlarr:develop
+    env_file:
+      - ./arr/prowlarr/prowlarr.env
+    volumes:
+      - ./arr/prowlarr/config:/config
+    ports:
+      - 9696:9696
+    networks:
+      - NET
+    restart: unless-stopped
+
+  bazarr:
+    container_name: bazarr
+    image: lscr.io/linuxserver/bazarr:latest
+    env_file:
+      - ./arr/bazarr/bazarr.env
+    volumes:
+      - ./arr/bazarr/config:/config
+      - /home/lucas/hdd0/data:/data
+    networks:
+      - NET
+    restart: unless-stopped
+
+  addarr:
+    image: waterboy1602/addarr
+    container_name: addarr
+    networks:
+      - NET
+    volumes:
+      - ./arr/addarr/config.yaml:/app/config.yaml:ro
+      - ./arr/addarr/chatid.txt:/app/chatid.txt:rw
+      - ./arr/addarr/admin.txt:/app/admin.txt:ro
+      - ./arr/addarr/allowlist.txt:/app/allowlist.txt:ro
+      - ./arr/addarr/logs:/app/logs:rw
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    networks:
+      - NET
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - ./watchtower/watchtower.env
+
+  photoprism:
+    image: photoprism/photoprism:latest
+    container_name: photoprism
+    depends_on:
+      - photoprismdb
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    env_file:
+      - ./photoprism/photoprism.env
+    volumes:
+      - /home/lucas/hdd0/Files/Photos:/photoprism/originals
+      - ./photoprism/data/import:/photoprism/import
+      - ./photoprism/data/storage:/photoprism/storage
+    networks:
+      - NET
+      - photoprismdb
+
+  photoprismdb:
+    image: mariadb:10.8
+    container_name: photoprismdb
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    command: mysqld --lower-case-table-names=1 --innodb-buffer-pool-size=512M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    volumes:
+      - ./photoprism/db:/var/lib/mysql
+    env_file:
+      - ./photoprism/photoprismdb.env
+    networks:
+      - photoprismdb
+
+  jellyfin:
+    image: jellyfin/jellyfin
+    container_name: jellyfin
+    networks:
+      - NET
+    volumes:
+      - ./jellyfin/config:/config
+      - ./jellyfin/cache:/cache
+      - /home/lucas/hdd0/data/media:/media
+    restart: "unless-stopped"
+    env_file:
+      - ./jellyfin/jellyfin.env
+
+  vaultwarden:
+    container_name: vaultwarden
+    image: vaultwarden/server:latest
+    restart: always
+    volumes:
+      - ./vaultwarden/data:/data
+    env_file:
+      - ./vaultwarden/vaultwarden.env
+    networks:
+      - NET
+
+  seafile:
+    container_name: seafile
+    image: seafileltd/seafile-mc:latest
+    volumes:
+      - ./seafile/data:/shared
+    env_file:
+      - ./seafile/seafile.env
+    depends_on:
+      - seafile-db 
+      - memcached
+    networks:
+      - seafile-net
+      - NET
+
+  seafile-db:
+    container_name: seafile-db
+    image: mariadb:10.5
+    env_file:
+      - ./seafile/seafile-db.env
+    volumes:
+      - ./seafile/db:/var/lib/mysql
+    networks:
+      - seafile-net
+
+  memcached:
+    container_name: seafile-memcached
+    image: memcached:1.6
+    entrypoint: memcached -m 256
+    networks:
+      - seafile-net
+
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:latest
+    privileged: true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer:/data
+    restart: always
+    networks:
+      - NET
+
+  nginx:
+    container_name: nginx
+    image: jc21/nginx-proxy-manager:latest
+    depends_on:
+      - nginxdb
+    ports:
+      - 80:80
+      - 81:81
+      - 443:443
+    volumes:
+      - ./nginx/data:/data
+      - ./nginx/letsencrypt:/etc/letsencrypt
+    restart: always
+    env_file:
+      - ./nginx/nginx.env
+    networks:
+      - nginxdb
+      - NET
+      - homeserverEXT
+
+  nginxdb:
+    container_name: nginxdb
+    image: jc21/mariadb-aria:latest
+    restart: always
+    volumes:
+      - ./nginx/db:/var/lib/mysql
+    env_file:
+      - ./nginx/nginxdb.env
+    networks:
+      - nginxdb
