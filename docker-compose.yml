@@ -3,12 +3,27 @@ version: '3'
 networks:
   NET:
   nginxdb:
-  nextclouddb:
+  seafile-net:
   photoprismdb:
   homeserverEXT:
     external: true
 
 services:
+
+  mc:
+    image: itzg/minecraft-server
+    container_name: minecraft
+    ports:
+      - 25565:25565
+    env_file:
+      - ./minecraft/minecraft.env
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    volumes:
+      - ./minecraft/data:/data
+    networks:
+      - homeserverEXT
 
   jdownloader:
     image: jlesage/jdownloader-2
@@ -17,7 +32,7 @@ services:
       - ./jdownloader/jdownloader.env
     volumes:
       - ./jdownloader/config:/config:rw
-      - ~/hdd0/nextcloud/data/lucas/files/Downloads:/output:rw
+      - /home/lucas/hdd0/Files/Downloads:/output:rw
     networks:
       - NET
 
@@ -28,10 +43,12 @@ services:
       - ./qbittorrent/qbittorrent.env
     volumes:
       - ./qbittorrent/config:/config
-      - ~/hdd0/nextcloud/data/lucas/files:/files
+      - /home/lucas/hdd0/data:/data
     restart: unless-stopped
     ports:
-      - 9090:9090
+      - 8090:8090
+      - 6881:6881
+      - 6881:6881/udp
     networks:
       - NET
 
@@ -42,7 +59,7 @@ services:
       - ./arr/radarr/radarr.env
     volumes:
       - ./arr/radarr/config:/config
-      - ~/hdd0/nextcloud/data/lucas/files:/files
+      - /home/lucas/hdd0/data:/data
     networks:
       - NET
     restart: unless-stopped
@@ -54,7 +71,7 @@ services:
       - ./arr/sonarr/sonarr.env
     volumes:
       - ./arr/sonarr/config:/config
-      - ~/hdd0/nextcloud/data/lucas/files/TV:/tv
+      - /home/lucas/hdd0/data:/data
     networks:
       - NET
     restart: unless-stopped
@@ -66,6 +83,8 @@ services:
       - ./arr/prowlarr/prowlarr.env
     volumes:
       - ./arr/prowlarr/config:/config
+    ports:
+      - 9696:9696
     networks:
       - NET
     restart: unless-stopped
@@ -77,10 +96,22 @@ services:
       - ./arr/bazarr/bazarr.env
     volumes:
       - ./arr/bazarr/config:/config
-      - ~/hdd0/nextcloud/data/lucas/files/Downloads:/downloads
+      - /home/lucas/hdd0/data:/data
     networks:
       - NET
     restart: unless-stopped
+
+  addarr:
+    image: waterboy1602/addarr
+    container_name: addarr
+    networks:
+      - NET
+    volumes:
+      - ./arr/addarr/config.yaml:/app/config.yaml:ro
+      - ./arr/addarr/chatid.txt:/app/chatid.txt:rw
+      - ./arr/addarr/admin.txt:/app/admin.txt:ro
+      - ./arr/addarr/allowlist.txt:/app/allowlist.txt:ro
+      - ./arr/addarr/logs:/app/logs:rw
 
   watchtower:
     image: containrrr/watchtower
@@ -104,7 +135,7 @@ services:
     env_file:
       - ./photoprism/photoprism.env
     volumes:
-      - ~/hdd0/nextcloud/data/lucas/files/Photos:/photoprism/originals
+      - /home/lucas/hdd0/Files/Photos:/photoprism/originals
       - ./photoprism/data/import:/photoprism/import
       - ./photoprism/data/storage:/photoprism/storage
     networks:
@@ -134,35 +165,52 @@ services:
     volumes:
       - ./jellyfin/config:/config
       - ./jellyfin/cache:/cache
-      - ~/hdd0/nextcloud/data/lucas/files:/media
+      - /home/lucas/hdd0/data/media:/media
     restart: "unless-stopped"
     env_file:
       - ./jellyfin/jellyfin.env
 
-  nextcloud:
-    container_name: nextcloud
-    image: nextcloud
+  vaultwarden:
+    container_name: vaultwarden
+    image: vaultwarden/server:latest
     restart: always
-    user: "33"
     volumes:
-      - /home/lucas/hdd0/nextcloud:/var/www/html
+      - ./vaultwarden/data:/data
     env_file:
-      - ./nextcloud/nextcloud.env
+      - ./vaultwarden/vaultwarden.env
     networks:
       - NET
-      - nextclouddb
-    depends_on:
-      - nextclouddb
 
-  nextclouddb:
-    container_name: nextclouddb
-    image: mariadb
+  seafile:
+    container_name: seafile
+    image: seafileltd/seafile-mc:latest
     volumes:
-      - ./nextcloud/db:/var/lib/mysql
+      - ./seafile/data:/shared
     env_file:
-      - ./nextcloud/nextclouddb.env
+      - ./seafile/seafile.env
+    depends_on:
+      - seafile-db 
+      - memcached
     networks:
-      - nextclouddb
+      - seafile-net
+      - NET
+
+  seafile-db:
+    container_name: seafile-db
+    image: mariadb:10.5
+    env_file:
+      - ./seafile/seafile-db.env
+    volumes:
+      - ./seafile/db:/var/lib/mysql
+    networks:
+      - seafile-net
+
+  memcached:
+    container_name: seafile-memcached
+    image: memcached:1.6
+    entrypoint: memcached -m 256
+    networks:
+      - seafile-net
 
   portainer:
     container_name: portainer
@@ -173,17 +221,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./portainer:/data
     restart: always
-    networks:
-      - NET
-
-  vaultwarden:
-    container_name: vaultwarden
-    image: vaultwarden/server:latest
-    restart: always
-    volumes:
-      - ./vaultwarden/data:/data
-    env_file:
-      - ./vaultwarden/vaultwarden.env
     networks:
       - NET
 
